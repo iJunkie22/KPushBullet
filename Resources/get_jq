@@ -1,0 +1,11 @@
+#!/bin/bash
+if [ ! -d ./config ]; then
+mkdir ./config
+fi
+# This script will fetch the appropriate version of jq from GitHub
+
+# Detect either 64bit or 32bit
+bitnum=$(getconf LONG_BIT)
+wget  -O ./config/jq http://stedolan.github.io/jq/download/linux$bitnum/jq
+chmod +x ./config/jq
+exit

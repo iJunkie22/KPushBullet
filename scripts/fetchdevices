@@ -1,0 +1,8 @@
+#!/bin/bash
+apikey="$(cat "$HOME/.kde/share/apps/kpushbullet/APIkey")"
+#(curl https://api.pushbullet.com/v2/devices -u $apikey:) > 
+#| jq '[.devices] | .[0]') | awk -F ":" '/\:/ { print $0 }'
+
+(curl https://api.pushbullet.com/v2/devices -u $apikey:) | jq '[.devices] | .[0]' | awk -F "\"" '/^  \{/ { print "BEGIN:VJOURNAL" }; /^  \}/ { print "END:VJOURNAL" }; NF>1 { print $2$3$4$5$6 }'| (while read line; do echo "${line%,}"; done) > ./devices.ics
+
+exit

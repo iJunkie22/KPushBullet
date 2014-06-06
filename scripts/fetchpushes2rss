@@ -1,0 +1,108 @@
+#!/bin/bash
+
+RuntimePrint()
+{
+ duration=$(echo "scale=3;(${m2t}-${m1t})/(1*10^09)"|bc|sed 's/^\./0./')
+ echo -e "DEBUG: lines ${m1l}-${m2l}\t${duration}\tsec"
+}
+
+vir_path="$(echo $0)"
+real_kpb_root="$(ls -l "$vir_path" | awk -F "-> " '{print $2}'|awk -F "\/scripts\/" '{print $1}')"
+
+pushbullet_install_dir="$HOME/.kde/share/apps/kpushbullet"
+
+if [ -d ${real_kpb_root} ]
+    then 
+    pushbullet_install_dir="$real_kpb_root"
+fi
+
+
+apikey="$(cat "$pushbullet_install_dir/.APIkey")"
+
+if [ -z $apikey ]
+    then 
+    # APIkey is undefined, so prompt the user for it
+    inputdesc="Please iput your PushBullet API key. The key is stored locally for convenience so you don't have to enter it every time you fetch your pushes. You have the option to opt-out of this convenience in the next step."
+    inputtitle="KPushBullet - Enter Your API Key."
+    
+    apikey="$(kdialog --password "$inputdesc" "" --title "$inputtitle")"
+    kdialog --yesno "Would you like to save the key for later?"; if [[ "$?" == 0 ]]; then (echo "$apikey" > "$pushbullet_install_dir/.APIkey"); fi
+fi
+
+ask_where_to_save () {
+output_file="$(kdialog --getsavefilename "$HOME" ".xml" --title "Select/Name An Output xml File (Your RSS feed will live here).")"
+(echo "$output_file" > "$pushbullet_install_dir/.recent-rss-output")
+}
+
+if [[ $1 == --update-only ]]
+    then
+    # Trigger update-only mode (uses last recorded APIkey and RSS output filepath)
+    if [ ! -e "$pushbullet_install_dir/.recent-rss-output" ]
+      then
+      # There is no previous RSS output filepath
+      ask_where_to_save
+    else
+      # Trigger update-only mode (uses last recorded APIkey and RSS output filepath)
+      output_file="$(cat "$pushbullet_install_dir/.recent-rss-output")"
+    fi
+else
+    if [[ $1 == --debug ]]
+      then
+      output_file="/dev/null"
+    else
+    ask_where_to_save
+    fi
+fi
+
+download_pushes () {
+(curl https://api.pushbullet.com/v2/pushes -u $apikey:)
+}
+
+icalmethod () {
+(curl https://api.pushbullet.com/v2/pushes -u $apikey:) | jq '[.pushes] | .[0]'| awk -F "\"" '/^  \{/ { print "BEGIN:VJOURNAL" }; /^  \}/ { print "END:VJOURNAL" }; NF>1 { print $2$3$4$5$6 }'| (while read line; do echo "${line%,}"; done) > "$HOME/.kde/share/apps/kpushbullet/pushes.ics"
+(icalutil "VJOURNAL" "active: true" "$HOME/.kde/share/apps/kpushbullet/pushes.ics") > "$HOME/.kde/share/apps/kpushbullet/activepushes.ics"
+}
+
+rssmethod1 () {
+# This method barely uses jq, and instead uses awk. It is designated as 'legacy code' as of June 4, 2014
+jq '[.pushes] | .[0]'| (awk 'BEGIN { FS="\"" };
+/^  \{/ { k=0; print "<item>" };
+/^    \"body\"\: \"/ { FS="\"body\"\: \"|\"\,"; print "<description><![CDATA[" $4 "]]></description>"; FS="\"" };
+/^    \"iden\"\: \"/ { FS="\""; print "<guid isPermalink\=\"false\">" $4 "</guid>" };
+/^    \"url\"\: \"/ { FS="\""; print "<link>" $4 "</link>" };
+/^    \"created\"\: / { FS=":"; command = ("tr -dc [:digit:].@"); print "@" $3 | command; close(command); print ""; FS="\""};
+/^    \"title\"\: \"/ {FS="\"" ; print "<title><![CDATA[" $4 "]]></title>" };
+/^  \}\,/ || /^  \}/ {print "</item>" };') 
+}
+
+
+rssmethod2 () {
+# This method takes full advantage of jq's abilities, and uses sed to clean up its inabilities
+(jq '[.pushes] | .[] | .[] | select(.active == true) | (if .type == "link" then "<item>","@\(.created)","<link>\(.url)</link>","<guid isPermalink=\"false\">\(.iden)</guid>","<title><![CDATA[\(.title)]]></title>","</item>" elif .type == "note" then "<item>","@\(.created)","<description><![CDATA[\(.body)]]></description>","<guid isPermalink=\"false\">\(.iden)</guid>","<title><![CDATA[\(.title)]]></title>","</item>" else empty end)' | sed -e 's/^\"//;s:\"$::;s:\\\":\":;s:\\\":\":')
+}
+
+translate_dates () {
+(while read line; do if [[ $line == @* ]]; then echo "<pubDate>$(date -R --date=$line)</pubDate>"; else echo "$line"; fi; done)
+}
+
+
+if [[ $1 == --debug ]]
+  then
+  download_pushes > /tmp/jsondump
+  m1t=$(date +%s%N); m1l=$LINENO
+  echo "rssmethod1"
+  cat "/tmp/jsondump" | rssmethod1 > "/tmp/rssmethod1"
+  m2t=$(date +%s%N); m2l=$LINENO; RuntimePrint
+  echo "-------"
+  echo "rssmethod2"
+  m1t=$(date +%s%N); m1l=$LINENO
+    cat "/tmp/jsondump" | rssmethod2 > "/tmp/rssmethod2"
+    m2t=$(date +%s%N); m2l=$LINENO; RuntimePrint
+      echo "-------"
+
+  exit
+fi
+(cat "$pushbullet_install_dir/Resources/rssHeader") > "$output_file"
+(download_pushes | rssmethod2 | translate_dates) >> "$output_file"
+(cat "$pushbullet_install_dir/Resources/rssFooter") >> "$output_file"
+exit

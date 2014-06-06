@@ -1,0 +1,27 @@
+#!/bin/bash
+apikey="$(cat "/home/ethan/.kde/share/apps/kpushbullet/APIkey")"
+#(curl https://api.pushbullet.com/v2/devices -u $apikey:) > 
+#| jq '[.devices] | .[0]') | awk -F ":" '/\:/ { print $0 }'
+vir_path="$(echo $0)"
+real_kpb_root="$(ls -l "$vir_path" | awk -F "-> " '{print $2}'|awk -F "\/scripts\/" '{print $1}')"
+
+inputdesc="The page title will be generated for you. "
+inputtitle="KPushBullet - Push New Link"
+#inputw="400"
+#inputh="300"
+#trigger_link_d () {
+#linkcontent="$(kdialog --inputbox "$inputdesc" "" --title "$inputtitle")"
+#linklength="${#linkcontent}"
+#}
+
+#trigger_link_d
+linkcontent="$(kdialog --icon "/home/ethan/.kde/share/apps/kpushbullet/icon.png" --inputbox "$inputdesc" "" --title "$inputtitle")"
+linklength="${#linkcontent}"
+if [[ "$linklength" > 0 ]]
+then
+autolinkname="$(curl -s -N "$linkcontent" | awk -F "<|>" '$2=="title" { print $3 }')"
+curl https://api.pushbullet.com/v2/pushes -u $apikey: -d type="link" -d title="$autolinkname" -d url="$linkcontent" -X POST
+else
+echo "${#linkcontent}"
+fi
+exit

@@ -1,0 +1,31 @@
+#!/bin/bash
+apikey="$(cat "$HOME/.kde/share/apps/kpushbullet/APIkey")"
+#(curl https://api.pushbullet.com/v2/devices -u $apikey:) > 
+#| jq '[.devices] | .[0]') | awk -F ":" '/\:/ { print $0 }'
+
+inputdesc="The first line will be used as a title"
+inputtitle="KPushBullet - Push New Note"
+inputw="400"
+inputh="300"
+trigger_note_d () {
+notecontent="$(kdialog --background "135,255,80" --textinputbox "$inputdesc" "" "$inputw" "$inputh" --title "$inputtitle")"
+notelength="$(echo "$notecontent" | awk 'END { print NR }')"
+notetitle="$(echo "$notecontent"| head -n 1)"
+notebody="$(echo "$notecontent"| tail -n +2)"
+}
+
+trigger_note_d
+if [[ "$notelength" > 1 ]]
+then
+curl https://api.pushbullet.com/v2/pushes -u $apikey: -d type="note" -d title="$notetitle" -d body="$notebody" -X POST
+else
+echo "$notecontent"
+echo "$notelength"
+fi
+unset notecontent
+unset notelength
+exit
+
+#) | jq '[.pushes] | .[0]'| awk -F "\"" '/^  \{/ { print "BEGIN:VJOURNAL" }; /^  \}/ { print "END:VJOURNAL" }; NF>1 { print $2$3$4$5$6 }'| (while read line; do echo "${line%,}"; done) > ./pushes.ics
+
+#exit

@@ -1,0 +1,5 @@
+.APIkey
+.recent-rss-output
+*.ics
+*.desktop
+Rresources/config/*
