@@ -1,0 +1,7 @@
+#!/bin/bash
+apikey=$(cat .APIkey)
+device_filter=./devices.jq
+device_list=$(curl https://api.pushbullet.com/v2/devices -u $apikey: | jq -f $device_filter | sed 's/ /_/g;s/\"//g')
+#echo $device_list
+kdialog --icon "${PWD}/icon.png" --caption "KPushBullet" --title "Devices" --checklist "Select the target device(s)" $device_list
+#--separate-output

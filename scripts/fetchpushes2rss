@@ -6,18 +6,46 @@ RuntimePrint()
  echo -e "DEBUG: lines ${m1l}-${m2l}\t${duration}\tsec"
 }
 
-vir_path="$(echo $0)"
-real_kpb_root="$(ls -l "$vir_path" | awk -F "-> " '{print $2}'|awk -F "\/scripts\/" '{print $1}')"
+#vir_path="$(echo $0)"
+#real_kpb_root="$(ls -l "$vir_path" | awk -F "-> " '{print $2}'|awk -F "\/scripts\/" '{print $1}')"
 
-pushbullet_install_dir="$HOME/.kde/share/apps/kpushbullet"
+#pushbullet_install_dir="$HOME/.kde/share/apps/kpushbullet"
 
-if [ -d ${real_kpb_root} ]
-    then 
-    pushbullet_install_dir="$real_kpb_root"
+#if [ -d ${real_kpb_root} ]
+#    then 
+#    pushbullet_install_dir="$real_kpb_root"
+#fi
+
+
+#apikey="$(cat "$pushbullet_install_dir/.APIkey")"
+readconf () {
+iconfile=$(kreadconfig --file "kpushbulletrc" --group "General" --key "Icon")
+resourcedir=$(kreadconfig --file "kpushbulletrc" --group "General" --key "Resource Directory")
+apikey=$(kreadconfig --file "kpushbulletrc" --group "User Data" --key "APIKey")
+recentrss=$(kreadconfig --file "kpushbulletrc" --group "RSS Generator" --key "RSS Output File")
+rssheaderrs=$(kreadconfig --file "kpushbulletrc" --group "RSS Generator" --key "RSS Header Resource")
+rssfooterrs=$(kreadconfig --file "kpushbulletrc" --group "RSS Generator" --key "RSS Footer Resource")
+}
+ask_where_to_save () {
+(kdialog --icon "$iconfile" --caption "KPushBullet" --getsavefilename "$HOME" ".xml" --title "Select/Name An Output xml File (Your RSS feed will live here).") | (kwriteconfig --file "kpushbulletrc" --group "RSS Generator" --key "RSS Output File" $(cat -))
+}
+locate_resource_dir () {
+(kdialog --caption "KPushBullet" --getexistingdirectory "$HOME" --title "Locate the resources directory!") | (kwriteconfig --file "kpushbulletrc" --group "General" --key "Resource Directory" $(cat -))
+readconf
+(kwriteconfig --file "kpushbulletrc" --group "General" --key "Icon" "$resourcedir/icon.png")
+(kwriteconfig --file "kpushbulletrc" --group "RSS Generator" --key "RSS Header Resource" "$resourcedir/rssHeader")
+(kwriteconfig --file "kpushbulletrc" --group "RSS Generator" --key "RSS Footer Resource" "$resourcedir/rssFooter")
+}
+readconf
+
+
+if [ ! -e "$resourcedir" ]
+  then
+  locate_resource_dir
+  readconf
 fi
 
 
-apikey="$(cat "$pushbullet_install_dir/.APIkey")"
 
 if [ -z $apikey ]
     then 
@@ -25,32 +53,30 @@ if [ -z $apikey ]
     inputdesc="Please iput your PushBullet API key. The key is stored locally for convenience so you don't have to enter it every time you fetch your pushes. You have the option to opt-out of this convenience in the next step."
     inputtitle="KPushBullet - Enter Your API Key."
     
-    apikey="$(kdialog --password "$inputdesc" "" --title "$inputtitle")"
-    kdialog --yesno "Would you like to save the key for later?"; if [[ "$?" == 0 ]]; then (echo "$apikey" > "$pushbullet_install_dir/.APIkey"); fi
+    apikey="$(kdialog --icon "$iconfile" --caption "KPushBullet" --title "Setup" --password "$inputdesc" "")"
+    kdialog --yesno "Would you like to save the key for later?"; if [[ "$?" == 0 ]]; then (kwriteconfig --file "kpushbulletrc" --group "User Data" --key "APIKey" $apikey);readconf; fi
 fi
 
-ask_where_to_save () {
-output_file="$(kdialog --getsavefilename "$HOME" ".xml" --title "Select/Name An Output xml File (Your RSS feed will live here).")"
-(echo "$output_file" > "$pushbullet_install_dir/.recent-rss-output")
-}
+
 
 if [[ $1 == --update-only ]]
     then
     # Trigger update-only mode (uses last recorded APIkey and RSS output filepath)
-    if [ ! -e "$pushbullet_install_dir/.recent-rss-output" ]
+    if [ ! -e "$recentrss" ]
       then
       # There is no previous RSS output filepath
       ask_where_to_save
-    else
-      # Trigger update-only mode (uses last recorded APIkey and RSS output filepath)
-      output_file="$(cat "$pushbullet_install_dir/.recent-rss-output")"
+      readconf
     fi
+      # Trigger update-only mode (uses last recorded APIkey and RSS output filepath)
+      
 else
     if [[ $1 == --debug ]]
       then
-      output_file="/dev/null"
+      recentrss="/dev/null"
     else
     ask_where_to_save
+    readconf
     fi
 fi
 
@@ -102,7 +128,7 @@ if [[ $1 == --debug ]]
 
   exit
 fi
-(cat "$pushbullet_install_dir/Resources/rssHeader") > "$output_file"
-(download_pushes | rssmethod2 | translate_dates) >> "$output_file"
-(cat "$pushbullet_install_dir/Resources/rssFooter") >> "$output_file"
+(cat "$rssheaderrs") > "$recentrss"
+(download_pushes | rssmethod2 | translate_dates) >> "$recentrss"
+(cat "$rssfooterrs") >> "$recentrss"
 exit
